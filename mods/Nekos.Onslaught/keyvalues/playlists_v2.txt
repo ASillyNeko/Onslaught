@@ -14,8 +14,11 @@ playlists
 				image lts
 
 				classic_mp 0
+				respawn_delay 2.5
 				max_players 12
 				max_teams 2
+				timelimit 4
+				scorelimit 3
 				roundtimelimit 4
 				roundscorelimit 3
 
@@ -37,6 +40,7 @@ playlists
 				image lts
 
 				classic_mp 0
+				respawn_delay 2.5
 				max_players 12
 				max_teams 2
 				timelimit 4

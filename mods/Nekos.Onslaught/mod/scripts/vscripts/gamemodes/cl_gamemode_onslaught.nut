@@ -25,6 +25,9 @@ void function ServerCallback_OnSlaughtGameMode_JuggernautCrateIcon( int crate )
 
 void function OnSlaughtGameMode_MakeJuggernautCrateIcon( entity crate )
 {
+	if ( !IsValid( crate ) )
+		return
+
 	crate.EndSignal( "OnDestroy" )
 	crate.EndSignal( "OnDeath" )
 
@@ -57,13 +60,16 @@ void function OnSlaughtGameMode_MakeJuggernautCrateIcon( entity crate )
 	WaitForever()
 }
 
-void function ServerCallback_OnSlaughtGameMode_JuggernautIcon( int player )
+void function ServerCallback_OnSlaughtGameMode_JuggernautIcon( int player, int health )
 {
-	thread OnSlaughtGameMode_MakeJuggernautIcon( GetEntityFromEncodedEHandle( player ) )
+	thread OnSlaughtGameMode_MakeJuggernautIcon( GetEntityFromEncodedEHandle( player ), health )
 }
 
-void function OnSlaughtGameMode_MakeJuggernautIcon( entity player )
+void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
 {
+	if ( !IsValid( player ) )
+		return
+
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
 
@@ -80,7 +86,8 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player )
 		}
 	)
 
-		// RuiSetImage( rui, "icon", $"resource/juggernauticon.png" )
+		// Custom images not finished yet
+		// RuiSetImage( rui, "icon", $"ui/juggernauticon2" )
 		// RuiSetBool( rui, "isVisible", true )
 		// RuiSetBool( rui, "showClampArrow", true )
 		// RuiSetBool( rui, "pinToEdge", true )
@@ -103,7 +110,7 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player )
 	while ( true )
 	{
 		float hp = float( player.GetHealth() )
-		float frac = clamp( hp / 1200, 0.0, 1.0 )
+		float frac = clamp( hp / health, 0.0, 1.0 )
 		RuiSetFloat( rui, "progressFrac", frac )
 		WaitFrame()
 	}
@@ -116,8 +123,13 @@ void function ServerCallback_OnSlaughtGameMode_BaseIcon( int player, int base )
 
 void function OnSlaughtGameMode_MakeBaseIcon( entity player, entity base )
 {
+	if ( !IsValid( player ) || !IsValid( base ) )
+		return
+
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
+
+	base.EndSignal( "OnDestroy" )
 
 	GetLocalClientPlayer().EndSignal( "GameStateChanged" )
 

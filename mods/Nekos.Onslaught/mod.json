@@ -26,5 +26,8 @@
 	],
 	"Localisation": [
 		"resource/onslaught_localisation_%language%.txt"
+	],
+	"PluginDependencies": [
+		"BP_ORT"
 	]
 }
