@@ -871,25 +871,10 @@ void function OnSlaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 void function OnSlaughtGameMode_JuggernautEnteredBase( entity player, int team )
 {
 	if ( team == player.GetTeam() )
-	{
-		#if ONSLAUGHT_DEV
-			printt( "Friendly entered base" )
-		#endif
 		return
-	}
-	else
-	{
-		#if ONSLAUGHT_DEV
-			printt( "Enemy entered base" )
-		#endif
-	}
 
 	if ( file.Juggernaut != player )
 		return
-	
-	#if ONSLAUGHT_DEV
-		printt( "Juggernaut entered base" )
-	#endif
 
 	OnSlaughtGameMode_SetTeamScore( GetOtherTeam( team ) )
 	thread OnSlaughtGameMode_SetWinner( GetOtherTeam( team ) )
