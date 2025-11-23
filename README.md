@@ -2,4 +2,4 @@
 
 [Discord Server](https://ds.asillyneko.dev)
 
-Was A Limited Time Call Of Duty Modern Warfare 2019 Game Mode
+Was A Limited Time Call Of Duty Modern Warfare 2019 Gamemode
