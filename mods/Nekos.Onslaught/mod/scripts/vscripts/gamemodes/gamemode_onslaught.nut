@@ -115,6 +115,17 @@ void function OnSlaughtGameMode_SpawnJuggernautCrate( vector origin, vector angl
 void function OnSlaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 {
 	JuggernautCrate.EndSignal( "OnDestroy" )
+	svGlobal.levelEnt.EndSignal( "GameStateChanged" )
+
+	OnThreadEnd
+	(
+		function() : ( JuggernautCrate )
+		{
+			if ( IsValid( JuggernautCrate ) )
+				JuggernautCrate.Destroy()
+		}
+	)
+
 	while ( true )
 	{
 		entity player = expect entity ( JuggernautCrate.WaitSignal( "OnPlayerUse" ).player )
