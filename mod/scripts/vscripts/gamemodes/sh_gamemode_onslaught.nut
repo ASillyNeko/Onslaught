@@ -4,6 +4,9 @@ global const string GAMEMODE_ONSLAUGHT = "onslaught"
 
 void function Sh_OnslaughtGameMode_Init()
 {
+	AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernautcrate_usetime", "7.5", "#ONSLAUGHT_JUGGERNAUTCRATESETTINGS" )
+	AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernaut_health", "1000", "#ONSLAUGHT_JUGGERNAUTHEALTHSETTINGS" )
+
 	AddCallback_OnRegisteringCustomNetworkVars( OnslaughtGameMode_NetworkVars )
 	AddCallback_OnCustomGamemodesInit( CreateGamemodeOnslaught )
 }
@@ -16,7 +19,7 @@ void function CreateGamemodeOnslaught()
 	GameMode_SetGameModeAnnouncement( GAMEMODE_ONSLAUGHT, "grnc_modeDesc" )
 	GameMode_SetDefaultScoreLimits( GAMEMODE_ONSLAUGHT, 0, 3 )
 	GameMode_SetDefaultTimeLimits( GAMEMODE_ONSLAUGHT, 0, 4 )
-	GameMode_SetColor( GAMEMODE_ONSLAUGHT, [128, 255, 255, 255] )
+	GameMode_SetColor( GAMEMODE_ONSLAUGHT, [ 128, 255, 255, 255 ] )
 
 	AddPrivateMatchMode( GAMEMODE_ONSLAUGHT )
 	

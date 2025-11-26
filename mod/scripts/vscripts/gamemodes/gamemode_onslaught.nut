@@ -1,6 +1,6 @@
 global function OnslaughtGameMode_Init
 
-const int ONSLAUGHT_DEV = 1
+const int ONSLAUGHT_DEV = 0
 const int JUGGERNAUT_HEALTH = 1000
 
 struct
@@ -10,9 +10,11 @@ struct
 	array<vector> Onslaught_Angles = []
 
 	entity Juggernaut = null
+	int health = JUGGERNAUT_HEALTH
 
 	entity JuggernautCrate = null
 	bool JuggernautCrateUsable = true
+	float JuggernautCrateUseTime = 7.5
 	vector JuggernautCrateRespawnPos = < 0, 0, 0 >
 	vector JuggernautCrateRespawnAngle = < 0, 0, 0 >
 
@@ -53,6 +55,9 @@ void function OnslaughtGameMode_Init()
 	AddCallback_OnClientDisconnected( OnslaughtGameMode_JuggernautDisconnected )
 	AddCallback_IsValidMeleeExecutionTarget( OnslaughtGameMode_IsValidExecutionTarget )
 	AddCallback_OnPlayerRespawned( OnslaughtGameMode_OnPlayerRespawned )
+
+	file.health = GetCurrentPlaylistVarInt( "juggernaut_health", JUGGERNAUT_HEALTH )
+	file.JuggernautCrateUseTime = GetCurrentPlaylistVarFloat( "juggernautcrate_usetime", 7.5 )
 
 	// BP_ORT Stuff
 	#if BP_ORT
@@ -192,7 +197,7 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 	float startTime = Time()
 	JuggernautCrate.UnsetUsable()
 	file.JuggernautCrateUsable = false
-	float waitTime = 7.5
+	float waitTime = file.JuggernautCrateUseTime
 	#if ONSLAUGHT_DEV
 		waitTime = 1.0
 	#endif
@@ -209,7 +214,7 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 
 	player.SetPlayerSettingsWithMods( "pilot_stalker_male", Mods )
 	StatusEffect_AddEndless( player, eStatusEffect.move_slow, 0.1 ) // Disable Sprinting So They Can't Just Run Into The Base
-	player.SetMaxHealth( JUGGERNAUT_HEALTH )
+	player.SetMaxHealth( file.health )
 	player.SetHealth( player.GetMaxHealth() )
 	player.EnableRenderAlways()
 
@@ -247,7 +252,7 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 
 			if ( playerfromarray != player )
 			{
-				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_JuggernautIcon", player.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
+				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_JuggernautIcon", player.GetEncodedEHandle(), file.health )
 				
 				if ( playerfromarray.GetTeam() == player.GetTeam() )
 					NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_FRIENDLYGOTJUGGERNAUT" )
@@ -471,7 +476,7 @@ void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 			}
 
 			if ( playerfromarray != player )
-				Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautIcon", playerfromarray.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
+				Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautIcon", playerfromarray.GetEncodedEHandle(), file.health )
 		}
 	}
 
