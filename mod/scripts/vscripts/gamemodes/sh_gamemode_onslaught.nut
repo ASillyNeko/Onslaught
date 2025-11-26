@@ -4,7 +4,7 @@ global const string GAMEMODE_ONSLAUGHT = "onslaught"
 
 void function Sh_OnslaughtGameMode_Init()
 {
-	AddCallback_OnRegisteringCustomNetworkVars( OnSlaughtGameMode_NetworkVars )
+	AddCallback_OnRegisteringCustomNetworkVars( OnslaughtGameMode_NetworkVars )
 	AddCallback_OnCustomGamemodesInit( CreateGamemodeOnslaught )
 }
 
@@ -29,12 +29,12 @@ void function CreateGamemodeOnslaught()
 	#endif
 }
 
-void function OnSlaughtGameMode_NetworkVars()
+void function OnslaughtGameMode_NetworkVars()
 {
 	if ( GAMETYPE != GAMEMODE_ONSLAUGHT )
 		return
 
-	string start = "ServerCallback_OnSlaughtGameMode_"
+	string start = "ServerCallback_OnslaughtGameMode_"
 	Remote_RegisterFunction( start + "JuggernautCrateIcon" )
 	Remote_RegisterFunction( start + "JuggernautIcon" )
 	Remote_RegisterFunction( start + "BaseIcon" )

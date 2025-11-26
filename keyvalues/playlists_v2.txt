@@ -57,6 +57,8 @@ playlists
 					maps
 					{
 						mp_forwardbase_kodai 1
+						mp_eden 1
+						mp_drydock 1
 					}
 				}
 			}

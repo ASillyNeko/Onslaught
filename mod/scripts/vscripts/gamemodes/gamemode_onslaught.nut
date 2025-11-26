@@ -1,6 +1,6 @@
 global function OnslaughtGameMode_Init
 
-const int ONSLAUGHT_DEV = 0
+const int ONSLAUGHT_DEV = 1
 const int JUGGERNAUT_HEALTH = 1000
 
 struct
@@ -17,6 +17,7 @@ struct
 	vector JuggernautCrateRespawnAngle = < 0, 0, 0 >
 
 	table<int, entity > base
+	bool SwitchedSides = false
 
 	// BP_ORT Stuff
 	table<int, entity> custombotspawnpoint
@@ -33,60 +34,85 @@ void function OnslaughtGameMode_Init()
 	SetShouldUseRoundWinningKillReplay( true )
 	SetRoundBased( true )
 	SetSwitchSidesBased( true )
+	SetGamemodeAllowsTeamSwitch( false )
 	Riff_ForceTitanAvailability( eTitanAvailability.Never )
 	Riff_ForceBoostAvailability( eBoostAvailability.Disabled )
 	SetSpawnpointGamemodeOverride( TEAM_DEATHMATCH )
-	ClassicMP_SetCustomIntro( OnSlaughtGameMode_NoIntro, 5.0 )
+
+	GameMode_SetDefaultScoreLimits( GAMEMODE_ONSLAUGHT, 3, 3 )
+
+	ClassicMP_SetCustomIntro( OnslaughtGameMode_NoIntro, 5.0 )
 	ClassicMP_ForceDisableEpilogue( true )
 	ClassicMP_SetShouldTryIntroAndEpilogueWithoutClassicMP( true )
 
-	AddCallback_GameStateEnter( eGameState.Playing, OnslaughtGameMode_Setup )
-	SetTimeoutWinnerDecisionFunc( OnslaughtGameMode_DecideTimeoutWinner )
+	AddCallback_GameStateEnter( eGameState.Prematch, OnslaughtGameMode_Prematch )
+	AddCallback_GameStateEnter( eGameState.Playing, OnslaughtGameMode_Playing )
+	AddCallback_GameStateEnter( eGameState.SwitchingSides, OnslaughtGameMode_SwitchingSides )
 
-	AddCallback_OnPlayerKilled( OnSlaughtGameMode_JuggernautDeath )
-	AddCallback_OnClientDisconnected( OnSlaughtGameMode_JuggernautDisconnected )
-	AddCallback_IsValidMeleeExecutionTarget( OnSluaghtGameMode_IsValidExecutionTarget )
-	AddCallback_OnPlayerRespawned( OnSlaughtGameMode_OnPlayerRespawned )
+	AddCallback_OnPlayerKilled( OnslaughtGameMode_JuggernautDeath )
+	AddCallback_OnClientDisconnected( OnslaughtGameMode_JuggernautDisconnected )
+	AddCallback_IsValidMeleeExecutionTarget( OnslaughtGameMode_IsValidExecutionTarget )
+	AddCallback_OnPlayerRespawned( OnslaughtGameMode_OnPlayerRespawned )
 
 	// BP_ORT Stuff
 	#if BP_ORT
-		AddCallback_OnClientConnected( OnSlaughtGameMode_BotThink )
-		AddCallback_OnPlayerKilled( OnSlaughtGameMode_RespawnBot )
+		AddCallback_OnClientConnected( OnslaughtGameMode_BotThink )
+		AddCallback_OnPlayerKilled( OnslaughtGameMode_RespawnBot )
 	#endif
 }
 
-void function OnslaughtGameMode_Setup()
+void function OnslaughtGameMode_Prematch()
 {
 	if ( !IsNewThread() )
 	{
-		thread OnslaughtGameMode_Setup()
+		thread OnslaughtGameMode_Prematch()
 		return
 	}
+
+	OnslaughtGameMode_SetupJuggernautBases( GetMapName() )
+
+	foreach ( entity player in GetPlayerArray() )
+		if ( IsValid( player ) )
+			OnslaughtGameMode_OnPlayerRespawned( player )
+}
+
+void function OnslaughtGameMode_Playing()
+{
+	if ( !IsNewThread() )
+	{
+		thread OnslaughtGameMode_Playing()
+		return
+	}
+
+	OnslaughtGameMode_GameStateEnter_Playing()
 
 	file.Juggernaut = null
 
 	if ( !file.Onslaught_Origins.len() && !file.Onslaught_Angles.len() )
-		OnSlaughtGameMode_SetupJuggernautSpawnpoints( GetMapName() )
+		OnslaughtGameMode_SetupJuggernautSpawnpoints( GetMapName() )
 
 	if ( file.Onslaught_Origins.len() && file.Onslaught_Angles.len() )
 	{
 		int random = RandomIntRange( 0, file.Onslaught_CrateLocationIndex + 1 )
-		OnSlaughtGameMode_SpawnJuggernautCrate( file.Onslaught_Origins[random], file.Onslaught_Angles[random] )
+		OnslaughtGameMode_SpawnJuggernautCrate( file.Onslaught_Origins[random], file.Onslaught_Angles[random] )
 	}
 
-	OnSlaughtGameMode_SetupJuggernautBases( GetMapName() )
-
-	foreach ( entity player in GetPlayerArray() )
-		if ( IsValid( player ) )
-			OnSlaughtGameMode_OnPlayerRespawned( player )
-
 	wait 8.0
+
+	if ( IsValid( file.Juggernaut ) )
+		return
+
 	foreach ( entity playerfromarray in GetPlayerArray() )
 		if ( IsValid( playerfromarray ) )
 			NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_CAPTUREJUGGERNAUT" )
 }
 
-void function OnSlaughtGameMode_SpawnJuggernautCrate( vector origin, vector angles )
+void function OnslaughtGameMode_SwitchingSides()
+{
+	file.SwitchedSides = !file.SwitchedSides
+}
+
+void function OnslaughtGameMode_SpawnJuggernautCrate( vector origin, vector angles )
 {
 	entity JuggernautCrate = CreateEntity( "prop_script" )
 	JuggernautCrate.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
@@ -102,17 +128,18 @@ void function OnSlaughtGameMode_SpawnJuggernautCrate( vector origin, vector angl
 	JuggernautCrate.SetAIObstacle( true )
 	JuggernautCrate.SetModel( $"models/containers/pelican_case_large.mdl" )
 	JuggernautCrate.SetForceVisibleInPhaseShift( true )
+	JuggernautCrate.EnableRenderAlways()
 	JuggernautCrate.SetUsable()
 	JuggernautCrate.SetUsableByGroup( "pilot" )
 	JuggernautCrate.SetUsePrompts( "#ONSLAUGHT_JUGGERNAUTCRATEUSEPROMPT", "#ONSLAUGHT_JUGGERNAUTCRATEUSEPROMPT" )
 	file.JuggernautCrate = JuggernautCrate
 	foreach ( entity player in GetPlayerArray() )
-		Remote_CallFunction_NonReplay( player, "ServerCallback_OnSlaughtGameMode_JuggernautCrateIcon", JuggernautCrate.GetEncodedEHandle() )
+		Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautCrateIcon", JuggernautCrate.GetEncodedEHandle() )
 
-	thread OnSlaughtGameMode_JuggernautCrate_Think( JuggernautCrate )
+	thread OnslaughtGameMode_JuggernautCrate_Think( JuggernautCrate )
 }
 
-void function OnSlaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
+void function OnslaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 {
 	JuggernautCrate.EndSignal( "OnDestroy" )
 	svGlobal.levelEnt.EndSignal( "GameStateChanged" )
@@ -130,13 +157,13 @@ void function OnSlaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 	{
 		entity player = expect entity ( JuggernautCrate.WaitSignal( "OnPlayerUse" ).player )
 		if ( IsValid( player ) && player.IsPlayer() )
-			thread OnSlaughtGameMode_Juggernaut_EquipThink( player, JuggernautCrate, player.IsBot() )
+			thread OnslaughtGameMode_Juggernaut_EquipThink( player, JuggernautCrate, player.IsBot() )
 
 		WaitFrame()
 	}
 }
 
-void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity JuggernautCrate, bool isbot = false )
+void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity JuggernautCrate, bool isbot = false )
 {
 	JuggernautCrate.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDestroy" )
@@ -155,6 +182,9 @@ void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 
 				file.JuggernautCrateUsable = true
 			}
+
+			if ( IsValid( player ) && file.Juggernaut != player )
+				OnslaughtGameMode_EnableOrDisableWeapons( player, true )
 		}
 	)
 
@@ -171,19 +201,17 @@ void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 		WaitFrame()
 
 	if ( !player.UseButtonPressed() && !isbot )
-	{
-		OnslaughtGameMode_EnableOrDisableWeapons( player, true )
 		return
-	}
 
 	array<string> Mods = [ "disable_wallrun", "disable_doublejump" ]
-	if ( player.IsBot() )
+	if ( isbot )
 		Mods = []
 
 	player.SetPlayerSettingsWithMods( "pilot_stalker_male", Mods )
 	StatusEffect_AddEndless( player, eStatusEffect.move_slow, 0.1 ) // Disable Sprinting So They Can't Just Run Into The Base
 	player.SetMaxHealth( JUGGERNAUT_HEALTH )
 	player.SetHealth( player.GetMaxHealth() )
+	player.EnableRenderAlways()
 
 	TakeWeaponsForArray( player, player.GetMainWeapons() )
 	player.TakeOffhandWeapon( OFFHAND_ORDNANCE )
@@ -192,11 +220,11 @@ void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 	entity weapon = player.GetMainWeapons()[0]
 	weapon.SetMods( [ "extended_ammo", "pas_fast_reload", "pas_run_and_gun", "threat_scope" ] )
 	weapon.SetWeaponPrimaryClipCount( weapon.GetWeaponPrimaryClipCountMax() )
-	thread OnSlaughtGameMode_JuggernautWeaponThink( player, weapon )
+	thread OnslaughtGameMode_JuggernautWeaponThink( player, weapon )
 
-	AddEntityCallback_OnDamaged( player, OnSlaughtGameMode_HandleJuggernautDamage )
+	AddEntityCallback_OnDamaged( player, OnslaughtGameMode_HandleJuggernautDamage )
 	file.Juggernaut = player
-	thread OnSlaughtGameMode_JuggernautThink( player )
+	thread OnslaughtGameMode_JuggernautThink( player )
 	player.Signal( "EquipedJuggernaut" )
 	foreach ( entity playerfromarray in GetPlayerArray() )
 	{
@@ -206,20 +234,20 @@ void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 			if ( IsIMCOrMilitiaTeam( player.GetTeam() ) )
 			{
 				base = file.base[ GetOtherTeam( player.GetTeam() ) ]
-				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnSlaughtGameMode_BaseIcon", player.GetEncodedEHandle(), base.GetEncodedEHandle() )
+				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_BaseIcon", player.GetEncodedEHandle(), base.GetEncodedEHandle() )
 			}
 			else
 			{
 				foreach ( int team in [ TEAM_IMC, TEAM_MILITIA ] )
 				{
 					base = file.base[ team ]
-					Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnSlaughtGameMode_BaseIcon", player.GetEncodedEHandle(), base.GetEncodedEHandle() )
+					Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_BaseIcon", player.GetEncodedEHandle(), base.GetEncodedEHandle() )
 				}
 			}
 
 			if ( playerfromarray != player )
 			{
-				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnSlaughtGameMode_JuggernautIcon", player.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
+				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_JuggernautIcon", player.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
 				
 				if ( playerfromarray.GetTeam() == player.GetTeam() )
 					NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_FRIENDLYGOTJUGGERNAUT" )
@@ -232,7 +260,7 @@ void function OnSlaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 	OnslaughtGameMode_EnableOrDisableWeapons( player, true, false )
 }
 
-void function OnSlaughtGameMode_DisableJump( entity player )
+void function OnslaughtGameMode_DisableJump( entity player )
 {
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
@@ -256,7 +284,7 @@ void function OnSlaughtGameMode_DisableJump( entity player )
 	}
 }
 
-void function OnSlaughtGameMode_JuggernautWeaponThink( entity player, entity weapon )
+void function OnslaughtGameMode_JuggernautWeaponThink( entity player, entity weapon )
 {
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
@@ -284,7 +312,7 @@ void function OnslaughtGameMode_EnableOrDisableWeapons( entity player, bool enab
 	{
 		player.MovementDisable()
 		player.ConsumeDoubleJump()
-		thread OnSlaughtGameMode_DisableJump( player )
+		thread OnslaughtGameMode_DisableJump( player )
 		HolsterAndDisableWeapons( player )
 	}
 }
@@ -293,24 +321,62 @@ int function OnslaughtGameMode_DecideTimeoutWinner()
 {
 	file.Juggernaut = null
 
-	OnSlaughtGameMode_SetTeamScore( TEAM_IMC )
-	OnSlaughtGameMode_SetTeamScore( TEAM_MILITIA )
+	OnslaughtGameMode_SetTeamScore( TEAM_IMC )
+	OnslaughtGameMode_SetTeamScore( TEAM_MILITIA )
 
 	CreateLevelWinnerDeterminedMusicEvent()
 
-	if ( TEAM_IMC >= GetCurrentPlaylistVarInt( "roundscorelimit", 3 ) )
-		return TEAM_IMC
-	else if ( TEAM_MILITIA >= GetCurrentPlaylistVarInt( "roundscorelimit", 3 ) )
-		return TEAM_MILITIA
+	int winningteam = TEAM_UNASSIGNED
 
-	return TEAM_UNASSIGNED
+	if ( TEAM_IMC >= GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) )
+		winningteam = TEAM_IMC
+	else if ( TEAM_MILITIA >= GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) )
+		winningteam = TEAM_MILITIA
+
+	if ( GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() ||
+	 GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) - 1 == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() )
+		SetGameState( eGameState.SwitchingSides )
+
+	return winningteam
 }
 
-void function OnSlaughtGameMode_JuggernautDeath( entity victim, entity attacker, var damageInfo )
+void function OnslaughtGameMode_GameStateEnter_Playing()
+{
+	if ( !IsNewThread() )
+	{
+		thread OnslaughtGameMode_GameStateEnter_Playing()
+		return
+	}
+
+	SetServerVar( "roundEndTime", expect float( GetServerVar( "roundEndTime" ) ) + 1.0 )
+
+	WaitFrame()
+
+	while ( GetGameState() == eGameState.Playing )
+	{
+		float endTime = expect float( GetServerVar( "roundEndTime" ) ) - 1.0
+	
+		if ( Time() >= endTime )
+		{
+			int winningTeam = OnslaughtGameMode_DecideTimeoutWinner()
+			
+			if ( GetGameState() != eGameState.SwitchingSides || ( IsIMCOrMilitiaTeam( winningTeam ) && GameRules_GetTeamScore2( winningTeam ) >= GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) ) )
+				OnslaughtGameMode_SetWinner( winningTeam, "#GAMEMODE_TIME_LIMIT_REACHED", "#GAMEMODE_TIME_LIMIT_REACHED" )
+
+			foreach ( entity player in GetPlayerArray() )
+				if ( IsValid( player ) && file.Juggernaut == player )
+					player.Die()
+		}
+		
+		WaitFrame()
+	}
+}
+
+void function OnslaughtGameMode_JuggernautDeath( entity victim, entity attacker, var damageInfo )
 {
 	TakeWeaponsForArray( victim, victim.GetMainWeapons() )
 
-	if ( file.Juggernaut != victim )
+	if ( file.Juggernaut != victim || GetGameState() != eGameState.Playing )
 		return
 
 	foreach ( entity playerfromarray in GetPlayerArray() )
@@ -323,14 +389,15 @@ void function OnSlaughtGameMode_JuggernautDeath( entity victim, entity attacker,
 		}
 
 	file.Juggernaut = null
-	OnSlaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+	victim.DisableRenderAlways()
 
-	RemoveEntityCallback_OnDamaged( victim, OnSlaughtGameMode_HandleJuggernautDamage )
+	RemoveEntityCallback_OnDamaged( victim, OnslaughtGameMode_HandleJuggernautDamage )
 }
 
-void function OnSlaughtGameMode_JuggernautDisconnected( entity player )
+void function OnslaughtGameMode_JuggernautDisconnected( entity player )
 {
-	if ( file.Juggernaut != player )
+	if ( file.Juggernaut != player || GetGameState() != eGameState.Playing )
 		return
 
 	foreach ( entity playerfromarray in GetPlayerArray() )
@@ -343,14 +410,17 @@ void function OnSlaughtGameMode_JuggernautDisconnected( entity player )
 		}
 
 	file.Juggernaut = null
-	OnSlaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+	player.DisableRenderAlways()
+
+	RemoveEntityCallback_OnDamaged( player, OnslaughtGameMode_HandleJuggernautDamage )
 }
 
-void function OnSlaughtGameMode_HandleJuggernautDamage( entity juggernaut, var damageInfo )
+void function OnslaughtGameMode_HandleJuggernautDamage( entity juggernaut, var damageInfo )
 {
 	if ( !IsNewThread() )
 	{
-		thread OnSlaughtGameMode_HandleJuggernautDamage( juggernaut, damageInfo )
+		thread OnslaughtGameMode_HandleJuggernautDamage( juggernaut, damageInfo )
 		return
 	}
 
@@ -363,7 +433,7 @@ void function OnSlaughtGameMode_HandleJuggernautDamage( entity juggernaut, var d
 		juggernaut.SetMaxHealth( max( 100, juggernaut.GetHealth() ) )
 }
 
-bool function OnSluaghtGameMode_IsValidExecutionTarget( entity attacker, entity target )
+bool function OnslaughtGameMode_IsValidExecutionTarget( entity attacker, entity target )
 {
 	if ( file.Juggernaut == target )
 		return false
@@ -371,11 +441,11 @@ bool function OnSluaghtGameMode_IsValidExecutionTarget( entity attacker, entity 
 	return true
 }
 
-void function OnSlaughtGameMode_OnPlayerRespawned( entity player )
+void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 {
 	if ( !IsNewThread() )
 	{
-		thread OnSlaughtGameMode_OnPlayerRespawned( player )
+		thread OnslaughtGameMode_OnPlayerRespawned( player )
 		return
 	}
 
@@ -389,24 +459,24 @@ void function OnSlaughtGameMode_OnPlayerRespawned( entity player )
 			if ( IsIMCOrMilitiaTeam( playerfromarray.GetTeam() ) )
 			{
 				base = file.base[ GetOtherTeam( playerfromarray.GetTeam() ) ]
-				Remote_CallFunction_NonReplay( player, "ServerCallback_OnSlaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
+				Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
 			}
 			else
 			{
 				foreach ( int team in [ TEAM_IMC, TEAM_MILITIA ] )
 				{
 					base = file.base[ team ]
-					Remote_CallFunction_NonReplay( player, "ServerCallback_OnSlaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
+					Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
 				}
 			}
 
 			if ( playerfromarray != player )
-				Remote_CallFunction_NonReplay( player, "ServerCallback_OnSlaughtGameMode_JuggernautIcon", playerfromarray.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
+				Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautIcon", playerfromarray.GetEncodedEHandle(), JUGGERNAUT_HEALTH )
 		}
 	}
 
 	if ( IsValid( file.JuggernautCrate ) )
-		Remote_CallFunction_NonReplay( player, "ServerCallback_OnSlaughtGameMode_JuggernautCrateIcon", file.JuggernautCrate.GetEncodedEHandle() )
+		Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautCrateIcon", file.JuggernautCrate.GetEncodedEHandle() )
 
 	if ( !( player.GetTeam() in file.base ) )
 		return
@@ -427,7 +497,7 @@ void function OnSlaughtGameMode_OnPlayerRespawned( entity player )
 	player.ClearInvulnerable()
 }
 
-void function OnSlaughtGameMode_JuggernautThink( entity player )
+void function OnslaughtGameMode_JuggernautThink( entity player )
 {
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
@@ -445,11 +515,11 @@ void function OnSlaughtGameMode_JuggernautThink( entity player )
 
 // BP_ORT Stuff
 #if BP_ORT
-	void function OnSlaughtGameMode_BotThink( entity bot )
+	void function OnslaughtGameMode_BotThink( entity bot )
 	{
 		if ( !IsNewThread() )
 		{
-			thread OnSlaughtGameMode_BotThink( bot )
+			thread OnslaughtGameMode_BotThink( bot )
 			return
 		}
 
@@ -552,11 +622,11 @@ void function OnSlaughtGameMode_JuggernautThink( entity player )
 		return returnOrigins
 	}
 
-	void function OnSlaughtGameMode_RespawnBot( entity bot, entity attacker, var damageInfo )
+	void function OnslaughtGameMode_RespawnBot( entity bot, entity attacker, var damageInfo )
 	{
 		if ( !IsNewThread() )
 		{
-			thread OnSlaughtGameMode_RespawnBot( bot, attacker, damageInfo )
+			thread OnslaughtGameMode_RespawnBot( bot, attacker, damageInfo )
 			return
 		}
 
@@ -582,7 +652,7 @@ void function OnSlaughtGameMode_JuggernautThink( entity player )
 	}
 #endif
 
-void function OnSlaughtGameMode_SetTeamScore( int team, int amount = 1 )
+void function OnslaughtGameMode_SetTeamScore( int team, int amount = 1 )
 {
 	int scoreLimit = GameMode_GetScoreLimit( GAMETYPE )
 	int score = GameRules_GetTeamScore( team )
@@ -601,7 +671,7 @@ void function OnSlaughtGameMode_SetTeamScore( int team, int amount = 1 )
 	GameRules_SetTeamScore2( team, newScore )
 }
 
-void function OnSlaughtGameMode_SetWinner( int ornull team, string winningReason = "", string losingReason = "", bool addedTeamScore = true )
+void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason = "", string losingReason = "", bool addedTeamScore = true )
 {
 	if ( !GamePlayingOrSuddenDeath() )
 		return
@@ -664,18 +734,18 @@ void function OnSlaughtGameMode_SetWinner( int ornull team, string winningReason
 	}
 }
 
-void function OnSlaughtGameMode_NoIntro()
+void function OnslaughtGameMode_NoIntro()
 {
-	AddCallback_OnClientConnected( OnSlaughtGameMode_NoIntro_SpawnPlayer )
-	AddCallback_GameStateEnter( eGameState.Prematch, OnSlaughtGameMode_NoIntro_Start )
+	AddCallback_OnClientConnected( OnslaughtGameMode_NoIntro_SpawnPlayer )
+	AddCallback_GameStateEnter( eGameState.Prematch, OnslaughtGameMode_NoIntro_Start )
 }
 
-void function OnSlaughtGameMode_NoIntro_Start()
+void function OnslaughtGameMode_NoIntro_Start()
 {
 	ClassicMP_OnIntroStarted()
 
 	foreach ( entity player in GetPlayerArray() )
-		OnSlaughtGameMode_NoIntro_SpawnPlayer( player )
+		OnslaughtGameMode_NoIntro_SpawnPlayer( player )
 		
 	while ( Time() < expect float( level.nv.gameStartTime ) )
 		WaitFrame()
@@ -692,18 +762,18 @@ void function OnSlaughtGameMode_NoIntro_Start()
 	ClassicMP_OnIntroFinished()
 }
 
-void function OnSlaughtGameMode_NoIntro_SpawnPlayer( entity player )
+void function OnslaughtGameMode_NoIntro_SpawnPlayer( entity player )
 {
 	if ( GetGameState() != eGameState.Prematch )
 		return
 
 	if ( ShouldIntroSpawnAsTitan() )
-		thread OnSlaughtGameMode_NoIntro_TitanSpawnPlayer( player )
+		thread OnslaughtGameMode_NoIntro_TitanSpawnPlayer( player )
 	else
-		thread OnSlaughtGameMode_NoIntro_PilotSpawnPlayer( player )
+		thread OnslaughtGameMode_NoIntro_PilotSpawnPlayer( player )
 }
 
-void function OnSlaughtGameMode_NoIntro_PilotSpawnPlayer( entity player )
+void function OnslaughtGameMode_NoIntro_PilotSpawnPlayer( entity player )
 {
 	player.EndSignal( "OnDestroy" )
 	if( PlayerCanSpawn( player ) )
@@ -723,7 +793,7 @@ void function OnSlaughtGameMode_NoIntro_PilotSpawnPlayer( entity player )
 	DeployAndEnableWeapons( player )
 }
 
-void function OnSlaughtGameMode_NoIntro_TitanSpawnPlayer( entity player )
+void function OnslaughtGameMode_NoIntro_TitanSpawnPlayer( entity player )
 {
 	player.EndSignal( "OnDestroy" )
 	WaitFrame()
@@ -747,96 +817,235 @@ void function OnSlaughtGameMode_NoIntro_TitanSpawnPlayer( entity player )
 }
 
 // Map Juggernaut Spawn Points
-void function OnSlaughtGameMode_SetupJuggernautSpawnpoints( string mapName )
+void function OnslaughtGameMode_SetupJuggernautSpawnpoints( string mapName )
 {
 	if ( mapName == "mp_forwardbase_kodai" )
 	{
 		file.Onslaught_CrateLocationIndex = 0
-		file.Onslaught_Origins = [ < -85.4952, 846.927, 1096.03 > ] 
-		file.Onslaught_Angles = [ < 0, 0, 0 >, < 0, 0, 0 > ]
+		file.Onslaught_Origins = [ < -40.3034, 870.326, 1096.03 > ] 
+		file.Onslaught_Angles = [ < 0, 90, 0 > ]
+	}
+	else if ( mapName == "mp_eden" )
+	{
+		file.Onslaught_CrateLocationIndex = 0
+		file.Onslaught_Origins = [ < 1012.47, 447.898, 67.8343 > ] 
+		file.Onslaught_Angles = [ < 0, 90, 0 > ]
+	}
+	else if ( mapName == "mp_drydock" )
+	{
+		file.Onslaught_CrateLocationIndex = 0
+		file.Onslaught_Origins = [ < -312.031, -1.25381, 408.031 > ]
+		file.Onslaught_Angles = [ < 0, 90, 0 > ]
 	}
 }
 
-void function OnSlaughtGameMode_SetupJuggernautBases( string mapName )
+void function OnslaughtGameMode_SetupJuggernautBases( string mapName )
 {
 	entity base
+	int IMCTeam = file.SwitchedSides ? TEAM_MILITIA : TEAM_IMC
+	int MilitiaTeam = file.SwitchedSides ? TEAM_IMC : TEAM_MILITIA
 	#if BP_ORT
 		entity botspawnpoint
 	#endif
+
+	if ( IMCTeam in file.base && file.base[ IMCTeam ] && IsValid( file.base[ IMCTeam ] ) )
+		file.base[ IMCTeam ].Destroy()
+
+	if ( MilitiaTeam in file.base && file.base[ MilitiaTeam ] && IsValid( file.base[ MilitiaTeam ] ) )
+		file.base[ MilitiaTeam ].Destroy()
+
 	if ( mapName == "mp_forwardbase_kodai" )
 	{
 		// Base 1 IMC
-		entity base
 		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
 		base.SetOrigin( < -924.794, 2370.93, 960.031 > )
 		DispatchSpawn( base )
-		SetTeam( base, TEAM_IMC )
-		file.base[ TEAM_IMC ] <- base
+		SetTeam( base, IMCTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ IMCTeam ] <- base
 		#if BP_ORT
 			botspawnpoint = CreateEntity( "prop_script" )
 			botspawnpoint.SetOrigin( < -611.425, 1777.85, 878.241 > )
 			DispatchSpawn( botspawnpoint )
-			SetTeam( botspawnpoint, TEAM_IMC )
-			file.custombotspawnpoint[ TEAM_IMC ] <- botspawnpoint
+			SetTeam( botspawnpoint, IMCTeam )
+			file.custombotspawnpoint[ IMCTeam ] <- botspawnpoint
 		#endif
 
 		// Downstairs
 
 			// Doors
-			OnSlaughtGameMode_CreateBaseTrigger( < -1000, 2085, 1000 >, < -880, 2085, 1000 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -1000, 2430, 1000 >, < -760, 2430, 1000 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -155, 2545, 1000 >, < -155, 2720, 1000 >, TEAM_IMC )
+			OnslaughtGameMode_CreateBaseTrigger( < -1000, 2085, 1000 >, < -880, 2085, 1000 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -1000, 2430, 1000 >, < -760, 2430, 1000 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -155, 2545, 1000 >, < -155, 2720, 1000 >, IMCTeam )
 
 			// Window
-			OnSlaughtGameMode_CreateBaseTrigger( < -315, 2070, 1030 >, < -465, 2070, 1030 >, TEAM_IMC )
+			OnslaughtGameMode_CreateBaseTrigger( < -315, 2070, 1030 >, < -465, 2070, 1030 >, IMCTeam )
 
 		// Upstairs
 
 			// Door
-			OnSlaughtGameMode_CreateBaseTrigger( < -495, 3420, 1135 >, < -495, 3495, 1135 >, TEAM_IMC )
+			OnslaughtGameMode_CreateBaseTrigger( < -495, 3420, 1135 >, < -495, 3495, 1135 >, IMCTeam )
 
 			// Windows
-			OnSlaughtGameMode_CreateBaseTrigger( < -90, 3395, 1150 >, < -90, 3265, 1150 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -150, 3120, 1150 >, < -150, 3000, 1150 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -605, 2625, 1150 >, < -605, 2785, 1150 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -805, 2540, 1150 >, < -925, 2540, 1150 >, TEAM_IMC )
-			OnSlaughtGameMode_CreateBaseTrigger( < -965, 2070, 1150 >, < -875, 2070, 1150 >, TEAM_IMC )
+			OnslaughtGameMode_CreateBaseTrigger( < -90, 3395, 1150 >, < -90, 3265, 1150 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -150, 3120, 1150 >, < -150, 3000, 1150 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -605, 2625, 1150 >, < -605, 2785, 1150 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -805, 2540, 1150 >, < -925, 2540, 1150 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -965, 2070, 1150 >, < -875, 2070, 1150 >, IMCTeam )
 
 		// Base 2 Militia
 		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
 		base.SetOrigin( < 724.76, -1960.62, 952.031 > )
 		DispatchSpawn( base )
-		SetTeam( base, TEAM_MILITIA )
-		file.base[ TEAM_MILITIA ] <- base
+		SetTeam( base, MilitiaTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ MilitiaTeam ] <- base
 		
 		#if BP_ORT
 			botspawnpoint = CreateEntity( "prop_script" )
 			botspawnpoint.SetOrigin( < 336.194, -1266.42, 807.079 > )
 			DispatchSpawn( botspawnpoint )
-			SetTeam( botspawnpoint, TEAM_MILITIA )
-			file.custombotspawnpoint[ TEAM_MILITIA ] <- botspawnpoint
+			SetTeam( botspawnpoint, MilitiaTeam )
+			file.custombotspawnpoint[ MilitiaTeam ] <- botspawnpoint
 		#endif
 
 		// Doors
-		OnSlaughtGameMode_CreateBaseTrigger( < 850, -1610, 990 >, < 990, -1610, 990 >, TEAM_MILITIA )
-		OnSlaughtGameMode_CreateBaseTrigger( < 1000, -2095, 990 >, < 1000, -1940, 990 >, TEAM_MILITIA )
-		OnSlaughtGameMode_CreateBaseTrigger( < 485, -2285, 990 >, < 485, -2130, 990 >, TEAM_MILITIA )
-		OnSlaughtGameMode_CreateBaseTrigger( < 675, -1750, 990 >, < 815, -1750, 990 >, TEAM_MILITIA )
+		OnslaughtGameMode_CreateBaseTrigger( < 850, -1610, 990 >, < 990, -1610, 990 >, MilitiaTeam )
+		OnslaughtGameMode_CreateBaseTrigger( < 1000, -2095, 990 >, < 1000, -1940, 990 >, MilitiaTeam )
+		OnslaughtGameMode_CreateBaseTrigger( < 485, -2285, 990 >, < 485, -2130, 990 >, MilitiaTeam )
+		OnslaughtGameMode_CreateBaseTrigger( < 675, -1750, 990 >, < 815, -1750, 990 >, MilitiaTeam )
 
 		// Window
-		OnSlaughtGameMode_CreateBaseTrigger( < 485, -1940, 1030 >, < 485, -1820, 1030 >, TEAM_MILITIA )
+		OnslaughtGameMode_CreateBaseTrigger( < 485, -1940, 1030 >, < 485, -1820, 1030 >, MilitiaTeam )
+	}
+	else if ( mapName == "mp_eden" )
+	{
+		// Base 1 IMC
+		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
+		base.SetOrigin( < 3142.13, 228.306, 72.0313 > )
+		DispatchSpawn( base )
+		SetTeam( base, IMCTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ IMCTeam ] <- base
+
+		#if BP_ORT
+			botspawnpoint = CreateEntity( "prop_script" )
+			botspawnpoint.SetOrigin( < 3052.62, 802.836, 72.0313 > )
+			DispatchSpawn( botspawnpoint )
+			SetTeam( botspawnpoint, IMCTeam )
+			file.custombotspawnpoint[ IMCTeam ] <- botspawnpoint
+		#endif
+
+		// Downstairs
+			// Doors
+			OnslaughtGameMode_CreateBaseTrigger( < 3285, 240, 110 >, < 3285, 105, 110 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 2945, 410, 110 >, < 2805, 410, 110 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 3055, 600, 110 >, < 3055, 525, 110 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 3205, 445, 110 >, < 3205, 300, 110 >, IMCTeam )
+
+		// Upstairs
+			// Doors
+			OnslaughtGameMode_CreateBaseTrigger( < 3050, -115, 240 >, < 3050, -20, 240 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 3145, 245, 240 >, < 3070, 245, 240 >, IMCTeam )
+
+			// Window
+			OnslaughtGameMode_CreateBaseTrigger( < 3325, 210, 270 >, < 3325, 115, 270 >, IMCTeam )
+
+		// Base 2 Militia
+		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
+		base.SetOrigin( < -929.291, -790.651, 208.031 > )
+		DispatchSpawn( base )
+		SetTeam( base, MilitiaTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ MilitiaTeam ] <- base
+
+		#if BP_ORT
+			botspawnpoint = CreateEntity( "prop_script" )
+			botspawnpoint.SetOrigin( < -1408.32, -511.992, 208.031 > )
+			DispatchSpawn( botspawnpoint )
+			SetTeam( botspawnpoint, MilitiaTeam )
+			file.custombotspawnpoint[ MilitiaTeam ] <- botspawnpoint
+		#endif
+
+		// Doors
+		OnslaughtGameMode_CreateBaseTrigger( < -1425, -610, 250 >, < -1330, -610, 250 >, MilitiaTeam )
+		OnslaughtGameMode_CreateBaseTrigger( < -620, -875, 250 >, < -710, -875, 250 >, MilitiaTeam )
+
+		// Windows
+		OnslaughtGameMode_CreateBaseTrigger( < -1445, -870, 270 >, < -1445, -800, 270 >, MilitiaTeam )
+		OnslaughtGameMode_CreateBaseTrigger( < -600, -500, 270 >, < -600, -585, 270 >, MilitiaTeam )
+	}
+	else if ( mapName == "mp_drydock" )
+	{
+		// Base 1 IMC
+		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
+		base.SetOrigin( < 350.869, 2087.41, 264.031 > )
+		DispatchSpawn( base )
+		SetTeam( base, IMCTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ IMCTeam ] <- base
+
+		// Downstairs
+			// Doors
+			OnslaughtGameMode_CreateBaseTrigger( < 795, 1820, 305 >, < 915, 1820, 305 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 930, 1840, 305 >, < 925, 1965, 305 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 800, 2165, 305 >, < 910, 2170, 305 >, IMCTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -105, 1980, 305 >, < -105, 2140, 305 >, IMCTeam )
+
+			// Window
+			OnslaughtGameMode_CreateBaseTrigger( < 170, 2345, 325 >, < 305, 2345, 325 >, IMCTeam )
+
+		// Upstairs
+			// Window
+			OnslaughtGameMode_CreateBaseTrigger( < 785, 2015, 450 >, < 785, 2165, 450 >, IMCTeam )
+
+		// Base 2 Militia
+		base = CreateEntity( "prop_script" )
+		base.SetValueForModelKey( $"models/containers/pelican_case_large.mdl" )
+		base.SetOrigin( < 280.589, -1954.31, 280.031 > )
+		DispatchSpawn( base )
+		SetTeam( base, MilitiaTeam )
+		base.SetModel( $"models/dev/empty_model.mdl" )
+		base.EnableRenderAlways()
+		file.base[ MilitiaTeam ] <- base
+
+		// Downstairs
+			// Doors
+			// Doors
+			OnslaughtGameMode_CreateBaseTrigger( < 40, -1520, 315 >, < 205, -1520, 315 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 225, -2210, 315 >, < 780, -2210, 315 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 865, -1485, 315 >, < 865, -1365, 315 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -100, -2125, 315 >, < -100, -1980, 315 >, MilitiaTeam )
+
+			// Window
+			OnslaughtGameMode_CreateBaseTrigger( < 870, -2175, 350 >, < 870, -2050, 350 >, MilitiaTeam )
+		
+		// Upstairs
+			// Window
+			OnslaughtGameMode_CreateBaseTrigger( < 640, -1535, 475 >, < 765, -1535, 475 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 870, -1690, 475 >, < 870, -1815, 475 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < 175, -1535, 475 >, < 50, -1535, 475 >, MilitiaTeam )
+			OnslaughtGameMode_CreateBaseTrigger( < -105, -1620, 475 >, < -105, -1760, 475 >, MilitiaTeam )
 	}
 }
 
-void function OnSlaughtGameMode_CreateBaseTrigger( vector origin1, vector origin2, int baseteam )
+void function OnslaughtGameMode_CreateBaseTrigger( vector origin1, vector origin2, int baseteam )
 {
 	if ( !IsNewThread() )
 	{
-		thread OnSlaughtGameMode_CreateBaseTrigger( origin1, origin2, baseteam )
+		thread OnslaughtGameMode_CreateBaseTrigger( origin1, origin2, baseteam )
 		return
 	}
-
-	svGlobal.levelEnt.EndSignal( "GameStateChanged" )
 
 	#if ONSLAUGHT_DEV
 		DebugDrawLine( origin1, origin2, 0, 140, 255, true, 10000.0 )
@@ -852,7 +1061,7 @@ void function OnSlaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 
 	array<entity> playersInTrigger
 
-	while ( true )
+	while ( GetGameState() <= eGameState.Playing )
 	{
 		array<entity> playersCurrentlyInTrigger
 
@@ -869,7 +1078,7 @@ void function OnSlaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 			{
 				playersCurrentlyInTrigger.append( player )
 				if ( playersInTrigger.find( player ) == -1 )
-					OnSlaughtGameMode_JuggernautEnteredBase( player, baseteam )
+					OnslaughtGameMode_JuggernautEnteredBase( player, baseteam )
 			}
 		}
 
@@ -879,7 +1088,7 @@ void function OnSlaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 	}
 }
 
-void function OnSlaughtGameMode_JuggernautEnteredBase( entity player, int team )
+void function OnslaughtGameMode_JuggernautEnteredBase( entity player, int team )
 {
 	if ( team == player.GetTeam() )
 		return
@@ -887,6 +1096,12 @@ void function OnSlaughtGameMode_JuggernautEnteredBase( entity player, int team )
 	if ( file.Juggernaut != player )
 		return
 
-	OnSlaughtGameMode_SetTeamScore( GetOtherTeam( team ) )
-	thread OnSlaughtGameMode_SetWinner( GetOtherTeam( team ) )
+	OnslaughtGameMode_SetTeamScore( GetOtherTeam( team ) )
+
+	if ( GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() )
+		SetGameState( eGameState.SwitchingSides )
+	else
+		OnslaughtGameMode_SetWinner( GetOtherTeam( team ) )
+
+	player.Die()
 }

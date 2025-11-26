@@ -1,7 +1,7 @@
 global function CLOnslaughtGameMode_Init
-global function ServerCallback_OnSlaughtGameMode_JuggernautCrateIcon
-global function ServerCallback_OnSlaughtGameMode_JuggernautIcon
-global function ServerCallback_OnSlaughtGameMode_BaseIcon
+global function ServerCallback_OnslaughtGameMode_JuggernautCrateIcon
+global function ServerCallback_OnslaughtGameMode_JuggernautIcon
+global function ServerCallback_OnslaughtGameMode_BaseIcon
 
 void function CLOnslaughtGameMode_Init()
 {
@@ -18,18 +18,17 @@ void function CLOnslaughtGameMode_Init()
 	}
 }
 
-void function ServerCallback_OnSlaughtGameMode_JuggernautCrateIcon( int crate )
+void function ServerCallback_OnslaughtGameMode_JuggernautCrateIcon( int crate )
 {
-	thread OnSlaughtGameMode_MakeJuggernautCrateIcon( GetEntityFromEncodedEHandle( crate ) )
+	thread OnslaughtGameMode_MakeJuggernautCrateIcon( GetEntityFromEncodedEHandle( crate ) )
 }
 
-void function OnSlaughtGameMode_MakeJuggernautCrateIcon( entity crate )
+void function OnslaughtGameMode_MakeJuggernautCrateIcon( entity crate )
 {
 	if ( !IsValid( crate ) )
 		return
 
 	crate.EndSignal( "OnDestroy" )
-	crate.EndSignal( "OnDeath" )
 
 	GetLocalClientPlayer().EndSignal( "GameStateChanged" )
 
@@ -60,14 +59,14 @@ void function OnSlaughtGameMode_MakeJuggernautCrateIcon( entity crate )
 	WaitForever()
 }
 
-void function ServerCallback_OnSlaughtGameMode_JuggernautIcon( int player, int health )
+void function ServerCallback_OnslaughtGameMode_JuggernautIcon( int player, int health )
 {
-	thread OnSlaughtGameMode_MakeJuggernautIcon( GetEntityFromEncodedEHandle( player ), health )
+	thread OnslaughtGameMode_MakeJuggernautIcon( GetEntityFromEncodedEHandle( player ), health )
 }
 
-void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
+void function OnslaughtGameMode_MakeJuggernautIcon( entity player, int health )
 {
-	if ( !IsValid( player ) )
+	if ( !IsValid( player ) || !IsAlive( player ) )
 		return
 
 	player.EndSignal( "OnDestroy" )
@@ -76,7 +75,6 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
 	GetLocalClientPlayer().EndSignal( "GameStateChanged" )
 
 	var rui = CreateCockpitRui( $"ui/cp_hardpoint_marker.rpak", 200 )
-	// var rui = CreateCockpitRui( $"ui/overhead_icon_generic.rpak", MINIMAP_Z_BASE + 200 )
 
 	OnThreadEnd
 	(
@@ -85,15 +83,6 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
 			RuiDestroy( rui )
 		}
 	)
-
-		// Custom images not finished yet
-		// RuiSetImage( rui, "icon", $"ui/juggernauticon2" )
-		// RuiSetBool( rui, "isVisible", true )
-		// RuiSetBool( rui, "showClampArrow", true )
-		// RuiSetBool( rui, "pinToEdge", true )
-		// RuiSetFloat2( rui, "iconSize", <64,64,0> )
-		// RuiTrackFloat3( rui, "pos", player, RUI_TRACK_OVERHEAD_FOLLOW )
-		// WaitForever()
 
 	RuiTrackFloat3( rui, "pos", player, RUI_TRACK_ABSORIGIN_FOLLOW )
 
@@ -107,6 +96,7 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
 	RuiSetInt( rui, "hardpointState", 4 )
 
 	RuiSetBool( rui, "isVisible", true )
+
 	while ( true )
 	{
 		float hp = float( player.GetHealth() )
@@ -116,14 +106,14 @@ void function OnSlaughtGameMode_MakeJuggernautIcon( entity player, int health )
 	}
 }
 
-void function ServerCallback_OnSlaughtGameMode_BaseIcon( int player, int base )
+void function ServerCallback_OnslaughtGameMode_BaseIcon( int player, int base )
 {
-	thread OnSlaughtGameMode_MakeBaseIcon( GetEntityFromEncodedEHandle( player ), GetEntityFromEncodedEHandle( base ) )
+	thread OnslaughtGameMode_MakeBaseIcon( GetEntityFromEncodedEHandle( player ), GetEntityFromEncodedEHandle( base ) )
 }
 
-void function OnSlaughtGameMode_MakeBaseIcon( entity player, entity base )
+void function OnslaughtGameMode_MakeBaseIcon( entity player, entity base )
 {
-	if ( !IsValid( player ) || !IsValid( base ) )
+	if ( !IsValid( player ) || !IsAlive( player ) || !IsValid( base ) )
 		return
 
 	player.EndSignal( "OnDestroy" )
