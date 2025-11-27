@@ -1,9 +1,9 @@
 name: Publish package
 
 on:
-  push:
-    tags:
-      - "*"
+  release:
+    types:
+      - published
     
 env:
   name: ${{github.event.repository.name}} # Edit this if the package name differs from the repo name
