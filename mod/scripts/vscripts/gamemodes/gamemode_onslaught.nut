@@ -11,6 +11,7 @@ struct
 
 	entity Juggernaut = null
 	int health = JUGGERNAUT_HEALTH
+	entity lastdamagedjuggernaut = null
 
 	entity JuggernautCrate = null
 	bool JuggernautCrateUsable = true
@@ -384,6 +385,9 @@ void function OnslaughtGameMode_JuggernautDeath( entity victim, entity attacker,
 	if ( file.Juggernaut != victim || GetGameState() != eGameState.Playing )
 		return
 
+	if ( IsValid( attacker ) && attacker.IsPlayer() && attacker != victim && GetGameState() == eGameState.Playing && attacker.GetTeam() != victim.GetTeam() )
+		attacker.AddToPlayerGameStat( PGS_DEFENSE_SCORE, 1 )
+
 	foreach ( entity playerfromarray in GetPlayerArray() )
 		if ( IsValid( playerfromarray ) && playerfromarray != victim )
 		{
@@ -394,6 +398,7 @@ void function OnslaughtGameMode_JuggernautDeath( entity victim, entity attacker,
 		}
 
 	file.Juggernaut = null
+	file.lastdamagedjuggernaut = null
 	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
 	victim.DisableRenderAlways()
 
@@ -405,6 +410,10 @@ void function OnslaughtGameMode_JuggernautDisconnected( entity player )
 	if ( file.Juggernaut != player || GetGameState() != eGameState.Playing )
 		return
 
+	entity attacker = file.lastdamagedjuggernaut
+	if ( IsValid( attacker ) && attacker.IsPlayer() && attacker != player && GetGameState() == eGameState.Playing && attacker.GetTeam() != player.GetTeam() )
+		attacker.AddToPlayerGameStat( PGS_DEFENSE_SCORE, 1 )
+
 	foreach ( entity playerfromarray in GetPlayerArray() )
 		if ( IsValid( playerfromarray ) && playerfromarray != player )
 		{
@@ -415,6 +424,7 @@ void function OnslaughtGameMode_JuggernautDisconnected( entity player )
 		}
 
 	file.Juggernaut = null
+	file.lastdamagedjuggernaut = null
 	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
 	player.DisableRenderAlways()
 
@@ -429,7 +439,11 @@ void function OnslaughtGameMode_HandleJuggernautDamage( entity juggernaut, var d
 		return
 	}
 
-	WaitFrame()
+	entity attacker = DamageInfo_GetAttacker( damageInfo )
+	if ( IsValid( attacker ) && attacker.IsPlayer() && attacker != juggernaut && GetGameState() == eGameState.Playing && attacker.GetTeam() != juggernaut.GetTeam() )
+		file.lastdamagedjuggernaut = attacker
+
+	WaitEndFrame()
 
 	if ( file.Juggernaut != juggernaut )
 		return
