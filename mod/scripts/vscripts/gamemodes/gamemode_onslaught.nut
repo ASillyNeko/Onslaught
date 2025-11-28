@@ -371,7 +371,7 @@ void function OnslaughtGameMode_GameStateEnter_Playing()
 
 			foreach ( entity player in GetPlayerArray() )
 				if ( IsValid( player ) && file.Juggernaut == player )
-					player.Die()
+					player.Die( player, player, { damageSourceId = eDamageSourceId.damagedef_suicide } )
 		}
 		
 		WaitFrame()
@@ -1122,5 +1122,5 @@ void function OnslaughtGameMode_JuggernautEnteredBase( entity player, int team )
 	else
 		OnslaughtGameMode_SetWinner( GetOtherTeam( team ) )
 
-	player.Die()
+	player.Die( player, player, { damageSourceId = eDamageSourceId.damagedef_suicide } )
 }
