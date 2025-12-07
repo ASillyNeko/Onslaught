@@ -4,13 +4,18 @@ global const string GAMEMODE_ONSLAUGHT = "onslaught"
 
 void function Sh_OnslaughtGameMode_Init()
 {
-	AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernautcrate_usetime", "7.5", "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_CRATE_SETTINGS" )
-	AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernaut_health", "1000", "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_HEALTH_SETTINGS" )
+	#if UI
+		NSSetModeCategory( GAMEMODE_ONSLAUGHT, eModeMenuModeCategory.CUSTOM )
+	#else
+		AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernautcrate_usetime", "7.5", "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_CRATE_SETTINGS" )
+		AddPrivateMatchModeSettingArbitrary( "Onslaught", "juggernaut_health", "1000", "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_HEALTH_SETTINGS" )
 
-	AddCallback_OnRegisteringCustomNetworkVars( OnslaughtGameMode_NetworkVars )
-	AddCallback_OnCustomGamemodesInit( CreateGamemodeOnslaught )
+		AddCallback_OnRegisteringCustomNetworkVars( OnslaughtGameMode_NetworkVars )
+		AddCallback_OnCustomGamemodesInit( CreateGamemodeOnslaught )
+	#endif
 }
 
+#if !UI
 void function CreateGamemodeOnslaught()
 {
 	GameMode_Create( GAMEMODE_ONSLAUGHT )
@@ -48,3 +53,4 @@ void function OnslaughtGameMode_NetworkVars()
 
 	RegisterNetworkedVariable( "JuggernautCrateProgress", SNDC_GLOBAL, SNVT_INT, 0 )
 }
+#endif
