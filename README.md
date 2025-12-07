@@ -1,4 +1,4 @@
-# Onslaught STILL IN DEVELOPMENT
+# Onslaught
 
 [Discord Server](https://ds.asillyneko.dev)
 
