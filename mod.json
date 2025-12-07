@@ -1,7 +1,7 @@
 {
 	"Name": "Neko's Onslaught",
 	"Description": "Was a limited time Call Of Duty Modern Warfare 2019 gamemode.",
-	"Version": "1.0.6",
+	"Version": "1.0.7",
 	"LoadPriority": 20,
 	"RequiredOnClient": true,
 	"Scripts": [

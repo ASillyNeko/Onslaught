@@ -241,6 +241,7 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 	StatusEffect_AddEndless( player, eStatusEffect.move_slow, 0.1 ) // Disable Sprinting So They Can't Just Run Into The Base
 	player.SetMaxHealth( file.health )
 	player.SetHealth( player.GetMaxHealth() )
+	DisableCloak( player, 0.0 )
 	player.EnableRenderAlways()
 
 	TakeWeaponsForArray( player, player.GetMainWeapons() )
