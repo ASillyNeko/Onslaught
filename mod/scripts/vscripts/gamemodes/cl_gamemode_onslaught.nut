@@ -46,15 +46,23 @@ void function OnslaughtGameMode_MakeJuggernautCrateIcon( entity crate )
 
 	RuiSetInt( rui, "hardpointId", 0 )
 
-	RuiSetInt( rui, "viewerTeam", crate.GetTeam() )
+	RuiSetInt( rui, "viewerTeam", GetLocalClientPlayer().GetTeam() )
 	RuiSetInt( rui, "cappingTeam", crate.GetTeam() )
 
 	RuiTrackInt( rui, "hardpointTeamRelation", crate, RUI_TRACK_TEAM_RELATION_VIEWPLAYER )
 
 	RuiSetInt( rui, "hardpointState", 4 )
-	RuiSetFloat( rui, "progressFrac", 1.0 )
+	RuiSetFloat( rui, "progressFrac", 0.0 )
 
 	RuiSetBool( rui, "isVisible", true )
+
+	while ( true )
+	{
+		RuiSetInt( rui, "cappingTeam", crate.GetTeam() )
+		RuiSetFloat( rui, "progressFrac", GetGlobalNetInt( "JuggernautCrateProgress" ) / 100.0 )
+
+		WaitFrame()
+	}
 
 	WaitForever()
 }
@@ -101,7 +109,9 @@ void function OnslaughtGameMode_MakeJuggernautIcon( entity player, int health )
 	{
 		float hp = float( player.GetHealth() )
 		float frac = clamp( hp / health, 0.0, 1.0 )
+
 		RuiSetFloat( rui, "progressFrac", frac )
+
 		WaitFrame()
 	}
 }

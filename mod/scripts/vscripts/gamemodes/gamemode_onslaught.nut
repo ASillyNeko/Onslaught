@@ -1,6 +1,7 @@
 global function OnslaughtGameMode_Init
 
-const int ONSLAUGHT_DEV = 0
+const int ONSLAUGHT_DEV = 1
+
 const int JUGGERNAUT_HEALTH = 1000
 
 struct
@@ -22,7 +23,7 @@ struct
 	table<int, entity > base
 	bool SwitchedSides = false
 
-	// BP_ORT Stuff
+	// BP_ORT Thing
 	table<int, entity> custombotspawnpoint
 } file
 
@@ -34,12 +35,14 @@ void function OnslaughtGameMode_Init()
 	RegisterSignal( "EquipedJuggernaut" )
 
 	SetServerVar( "replayDisabled", false )
-	SetShouldUseRoundWinningKillReplay( true )
+
 	SetRoundBased( true )
 	SetSwitchSidesBased( true )
 	SetGamemodeAllowsTeamSwitch( false )
+
 	Riff_ForceTitanAvailability( eTitanAvailability.Never )
 	Riff_ForceBoostAvailability( eBoostAvailability.Disabled )
+
 	SetSpawnpointGamemodeOverride( TEAM_DEATHMATCH )
 
 	GameMode_SetDefaultScoreLimits( GAMEMODE_ONSLAUGHT, 3, 3 )
@@ -60,7 +63,6 @@ void function OnslaughtGameMode_Init()
 	file.health = GetCurrentPlaylistVarInt( "juggernaut_health", JUGGERNAUT_HEALTH )
 	file.JuggernautCrateUseTime = GetCurrentPlaylistVarFloat( "juggernautcrate_usetime", 7.5 )
 
-	// BP_ORT Stuff
 	#if BP_ORT
 		AddCallback_OnClientConnected( OnslaughtGameMode_BotThink )
 		AddCallback_OnPlayerKilled( OnslaughtGameMode_RespawnBot )
@@ -100,7 +102,8 @@ void function OnslaughtGameMode_Playing()
 	if ( file.Onslaught_Origins.len() && file.Onslaught_Angles.len() )
 	{
 		int random = RandomIntRange( 0, file.Onslaught_CrateLocationIndex + 1 )
-		OnslaughtGameMode_SpawnJuggernautCrate( file.Onslaught_Origins[random], file.Onslaught_Angles[random] )
+
+		OnslaughtGameMode_SpawnJuggernautCrate( file.Onslaught_Origins[ random ], file.Onslaught_Angles[ random ] )
 	}
 
 	wait 8.0
@@ -110,7 +113,7 @@ void function OnslaughtGameMode_Playing()
 
 	foreach ( entity playerfromarray in GetPlayerArray() )
 		if ( IsValid( playerfromarray ) )
-			NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_CAPTUREJUGGERNAUT" )
+			OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_CAPTURE_JUGGERNAUT" )
 }
 
 void function OnslaughtGameMode_SwitchingSides()
@@ -137,8 +140,10 @@ void function OnslaughtGameMode_SpawnJuggernautCrate( vector origin, vector angl
 	JuggernautCrate.EnableRenderAlways()
 	JuggernautCrate.SetUsable()
 	JuggernautCrate.SetUsableByGroup( "pilot" )
-	JuggernautCrate.SetUsePrompts( "#ONSLAUGHT_JUGGERNAUTCRATEUSEPROMPT", "#ONSLAUGHT_JUGGERNAUTCRATEUSEPROMPT" )
+	JuggernautCrate.SetUsePrompts( "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_CRATE_USE_PROMPT", "#GAMEMODE_ONSLAUGHT_JUGGERNAUT_CRATE_USE_PROMPT" )
+
 	file.JuggernautCrate = JuggernautCrate
+
 	foreach ( entity player in GetPlayerArray() )
 		Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_JuggernautCrateIcon", JuggernautCrate.GetEncodedEHandle() )
 
@@ -148,6 +153,7 @@ void function OnslaughtGameMode_SpawnJuggernautCrate( vector origin, vector angl
 void function OnslaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 {
 	JuggernautCrate.EndSignal( "OnDestroy" )
+
 	svGlobal.levelEnt.EndSignal( "GameStateChanged" )
 
 	OnThreadEnd
@@ -162,6 +168,7 @@ void function OnslaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 	while ( true )
 	{
 		entity player = expect entity ( JuggernautCrate.WaitSignal( "OnPlayerUse" ).player )
+
 		if ( IsValid( player ) && player.IsPlayer() )
 			thread OnslaughtGameMode_Juggernaut_EquipThink( player, JuggernautCrate, player.IsBot() )
 
@@ -172,6 +179,7 @@ void function OnslaughtGameMode_JuggernautCrate_Think( entity JuggernautCrate )
 void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity JuggernautCrate, bool isbot = false )
 {
 	JuggernautCrate.EndSignal( "OnDestroy" )
+
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
 
@@ -196,24 +204,40 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 
 	OnslaughtGameMode_EnableOrDisableWeapons( player )
 	float startTime = Time()
+	float waitTime = file.JuggernautCrateUseTime
+
 	JuggernautCrate.UnsetUsable()
 	file.JuggernautCrateUsable = false
-	float waitTime = file.JuggernautCrateUseTime
+
 	#if ONSLAUGHT_DEV
 		waitTime = 1.0
 	#endif
 
+	SetTeam( JuggernautCrate, player.GetTeam() )
+
 	while ( ( player.UseButtonPressed() || isbot ) && startTime > Time() - waitTime )
+	{
+		float progress = clamp( ( Time() - startTime ) / waitTime, 0.0, 1.0 )
+
+		SetGlobalNetInt( "JuggernautCrateProgress", int( progress * 100 ) )
+
 		WaitFrame()
+	}
+
+	SetGlobalNetInt( "JuggernautCrateProgress", 0 )
+
+	SetTeam( JuggernautCrate, TEAM_UNASSIGNED )
 
 	if ( !player.UseButtonPressed() && !isbot )
 		return
 
 	array<string> Mods = [ "disable_wallrun", "disable_doublejump" ]
+
 	if ( isbot )
 		Mods = []
 
 	player.SetPlayerSettingsWithMods( "pilot_stalker_male", Mods )
+
 	StatusEffect_AddEndless( player, eStatusEffect.move_slow, 0.1 ) // Disable Sprinting So They Can't Just Run Into The Base
 	player.SetMaxHealth( file.health )
 	player.SetHealth( player.GetMaxHealth() )
@@ -222,21 +246,27 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 	TakeWeaponsForArray( player, player.GetMainWeapons() )
 	player.TakeOffhandWeapon( OFFHAND_ORDNANCE )
 	player.TakeOffhandWeapon( OFFHAND_SPECIAL )
+
 	player.GiveWeapon( "mp_weapon_lmg" )
+
 	entity weapon = player.GetMainWeapons()[0]
+
 	weapon.SetMods( [ "extended_ammo", "pas_fast_reload", "pas_run_and_gun", "threat_scope" ] )
 	weapon.SetWeaponPrimaryClipCount( weapon.GetWeaponPrimaryClipCountMax() )
+
 	thread OnslaughtGameMode_JuggernautWeaponThink( player, weapon )
 
 	AddEntityCallback_OnDamaged( player, OnslaughtGameMode_HandleJuggernautDamage )
 	file.Juggernaut = player
 	thread OnslaughtGameMode_JuggernautThink( player )
 	player.Signal( "EquipedJuggernaut" )
+
 	foreach ( entity playerfromarray in GetPlayerArray() )
 	{
 		if ( IsValid( playerfromarray ) )
 		{
 			entity base
+
 			if ( IsIMCOrMilitiaTeam( player.GetTeam() ) )
 			{
 				base = file.base[ GetOtherTeam( player.GetTeam() ) ]
@@ -256,12 +286,14 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 				Remote_CallFunction_NonReplay( playerfromarray, "ServerCallback_OnslaughtGameMode_JuggernautIcon", player.GetEncodedEHandle(), file.health )
 				
 				if ( playerfromarray.GetTeam() == player.GetTeam() )
-					NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_FRIENDLYGOTJUGGERNAUT" )
+					OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_FRIENDLY_GOT_JUGGERNAUT" )
 				else
-					NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_ENEMYGOTJUGGERNAUT" )
+					OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_ENEMY_GOT_JUGGERNAUT" )
 			}
 		}
 	}
+
+	OnslaughtGameMode_SendInfoMessageToPlayer( player, "#GAMEMODE_ONSLAUGHT_GET_TO_ENEMY_BASE" )
 
 	OnslaughtGameMode_EnableOrDisableWeapons( player, true, false )
 }
@@ -272,11 +304,15 @@ void function OnslaughtGameMode_DisableJump( entity player )
 	player.EndSignal( "OnDeath" )
 	player.EndSignal( "EnableJump" )
 
+	if ( player.IsBot() )
+		return
+
 	while ( true )
 	{
-		if ( !player.IsNoclipping() && !player.IsBot() )
+		if ( !player.IsNoclipping() )
 		{
 			vector velocity = player.GetVelocity()
+
 			if ( velocity.z > 0.0 )
 				velocity.z = 0.0
 
@@ -294,6 +330,7 @@ void function OnslaughtGameMode_JuggernautWeaponThink( entity player, entity wea
 {
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
+
 	weapon.EndSignal( "OnDestroy" )
 
 	while ( true )
@@ -318,6 +355,7 @@ void function OnslaughtGameMode_EnableOrDisableWeapons( entity player, bool enab
 	{
 		player.MovementDisable()
 		player.ConsumeDoubleJump()
+
 		thread OnslaughtGameMode_DisableJump( player )
 		HolsterAndDisableWeapons( player )
 	}
@@ -339,8 +377,10 @@ int function OnslaughtGameMode_DecideTimeoutWinner()
 	else if ( TEAM_MILITIA >= GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) )
 		winningteam = TEAM_MILITIA
 
-	if ( GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() ||
-	 GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) - 1 == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() )
+	if (
+		GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger() ||
+		GameRules_GetTeamScore2( TEAM_IMC ) + GameRules_GetTeamScore2( TEAM_MILITIA ) - 1 == ( GameMode_GetRoundScoreLimit( GAMEMODE_ONSLAUGHT ) / 1.5 ).tointeger()
+	)
 		SetGameState( eGameState.SwitchingSides )
 
 	return winningteam
@@ -354,15 +394,13 @@ void function OnslaughtGameMode_GameStateEnter_Playing()
 		return
 	}
 
-	SetServerVar( "roundEndTime", expect float( GetServerVar( "roundEndTime" ) ) + 1.0 )
+	SetServerVar( "roundEndTime", expect float( GetServerVar( "roundEndTime" ) ) + 0.1 )
 
 	WaitFrame()
 
 	while ( GetGameState() == eGameState.Playing )
 	{
-		float endTime = expect float( GetServerVar( "roundEndTime" ) ) - 1.0
-	
-		if ( Time() >= endTime )
+		if ( Time() >= expect float( GetServerVar( "roundEndTime" ) ) - 0.1 )
 		{
 			int winningTeam = OnslaughtGameMode_DecideTimeoutWinner()
 			
@@ -389,17 +427,21 @@ void function OnslaughtGameMode_JuggernautDeath( entity victim, entity attacker,
 		attacker.AddToPlayerGameStat( PGS_DEFENSE_SCORE, 1 )
 
 	foreach ( entity playerfromarray in GetPlayerArray() )
+	{
 		if ( IsValid( playerfromarray ) && playerfromarray != victim )
 		{
 			if ( playerfromarray.GetTeam() == victim.GetTeam() )
-				NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_FRIENDLYARMORDOWN" )
+				OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_FRIENDLY_ARMOR_DOWN" )
 			else
-				NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_ENEMYARMORDOWN" )
+				OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_ENEMY_ARMOR_DOWN" )
 		}
+	}
 
 	file.Juggernaut = null
 	file.lastdamagedjuggernaut = null
+
 	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+
 	victim.DisableRenderAlways()
 
 	RemoveEntityCallback_OnDamaged( victim, OnslaughtGameMode_HandleJuggernautDamage )
@@ -411,21 +453,26 @@ void function OnslaughtGameMode_JuggernautDisconnected( entity player )
 		return
 
 	entity attacker = file.lastdamagedjuggernaut
+
 	if ( IsValid( attacker ) && attacker.IsPlayer() && attacker != player && GetGameState() == eGameState.Playing && attacker.GetTeam() != player.GetTeam() )
 		attacker.AddToPlayerGameStat( PGS_DEFENSE_SCORE, 1 )
 
 	foreach ( entity playerfromarray in GetPlayerArray() )
+	{
 		if ( IsValid( playerfromarray ) && playerfromarray != player )
 		{
 			if ( playerfromarray.GetTeam() == player.GetTeam() )
-				NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_FRIENDLYARMORDOWN" )
+				OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_FRIENDLY_ARMOR_DOWN" )
 			else
-				NSSendInfoMessageToPlayer( playerfromarray, "#ONSLAUGHT_ENEMYARMORDOWN" )
+				OnslaughtGameMode_SendInfoMessageToPlayer( playerfromarray, "#GAMEMODE_ONSLAUGHT_ENEMY_ARMOR_DOWN" )
 		}
+	}
 
 	file.Juggernaut = null
 	file.lastdamagedjuggernaut = null
+
 	OnslaughtGameMode_SpawnJuggernautCrate( file.JuggernautCrateRespawnPos, file.JuggernautCrateRespawnAngle )
+
 	player.DisableRenderAlways()
 
 	RemoveEntityCallback_OnDamaged( player, OnslaughtGameMode_HandleJuggernautDamage )
@@ -440,6 +487,7 @@ void function OnslaughtGameMode_HandleJuggernautDamage( entity juggernaut, var d
 	}
 
 	entity attacker = DamageInfo_GetAttacker( damageInfo )
+
 	if ( IsValid( attacker ) && attacker.IsPlayer() && attacker != juggernaut && GetGameState() == eGameState.Playing && attacker.GetTeam() != juggernaut.GetTeam() )
 		file.lastdamagedjuggernaut = attacker
 
@@ -475,9 +523,11 @@ void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 		if ( IsValid( playerfromarray ) && playerfromarray != player && playerfromarray == file.Juggernaut )
 		{
 			entity base
+
 			if ( IsIMCOrMilitiaTeam( playerfromarray.GetTeam() ) )
 			{
 				base = file.base[ GetOtherTeam( playerfromarray.GetTeam() ) ]
+
 				Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
 			}
 			else
@@ -485,6 +535,7 @@ void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 				foreach ( int team in [ TEAM_IMC, TEAM_MILITIA ] )
 				{
 					base = file.base[ team ]
+
 					Remote_CallFunction_NonReplay( player, "ServerCallback_OnslaughtGameMode_BaseIcon", playerfromarray.GetEncodedEHandle(), base.GetEncodedEHandle() )
 				}
 			}
@@ -501,6 +552,7 @@ void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 		return
 
 	entity spawnpoint = file.base[ player.GetTeam() ]
+
 	#if BP_ORT
 		if ( player.IsBot() && player.GetTeam() in file.custombotspawnpoint )
 			spawnpoint = file.custombotspawnpoint[ player.GetTeam() ]
@@ -512,7 +564,9 @@ void function OnslaughtGameMode_OnPlayerRespawned( entity player )
 	player.EndSignal( "OnDeath" )
 
 	player.SetInvulnerable()
+
 	wait 1.0
+
 	player.ClearInvulnerable()
 }
 
@@ -520,6 +574,7 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 {
 	player.EndSignal( "OnDestroy" )
 	player.EndSignal( "OnDeath" )
+
 	while ( true )
 	{	
 		if ( player.IsOnGround() && !player.IsWallRunning() && !player.IsNoclipping() && !EntityIsOutOfBounds( player ) )
@@ -532,7 +587,22 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 	}
 }
 
-// BP_ORT Stuff
+void function OnslaughtGameMode_SendInfoMessageToPlayer( entity player, string message )
+{
+	if ( !IsNewThread() )
+	{
+		thread OnslaughtGameMode_SendInfoMessageToPlayer( player, message )
+		return
+	}
+
+	player.EndSignal( "OnDestroy" )
+
+	while ( !IsAlive( player ) )
+		WaitFrame()
+
+	NSSendInfoMessageToPlayer( player, message )
+}
+
 #if BP_ORT
 	void function OnslaughtGameMode_BotThink( entity bot )
 	{
@@ -563,10 +633,12 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 			if ( IsValid( file.JuggernautCrate ) )
 			{
 				array<vector> points = NavMesh_GetNeighborPositions( file.JuggernautCrate.GetOrigin(), HULL_HUMAN, 5 )
+
 				if ( !points.len() )
 					points = NavMesh_RandomPositions( file.JuggernautCrate.GetOrigin(), HULL_HUMAN, 5, 0, 200.0 )
 
 				BotSetTargetPos( bot, points.len() ? SortPositionsByClosestToPos( points, file.JuggernautCrate.GetOrigin() )[0] : file.JuggernautCrate.GetOrigin() )
+
 				if ( Distance( bot.GetOrigin(), file.JuggernautCrate.GetOrigin() ) < 150.0 && PlayerCanSee( bot, file.JuggernautCrate, true, 135 ) && file.JuggernautCrateUsable )
 				{
 					file.JuggernautCrate.Signal( "OnPlayerUse", { player = bot } )
@@ -576,6 +648,7 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 			else if ( IsValid( file.Juggernaut ) && file.Juggernaut != bot )
 			{
 				array<vector> points = NavMesh_GetNeighborPositions( file.Juggernaut.GetOrigin(), HULL_HUMAN, 5 )
+
 				if ( !points.len() )
 					points = NavMesh_RandomPositions( file.Juggernaut.GetOrigin(), HULL_HUMAN, 5, 0, 200.0 )
 
@@ -589,14 +662,11 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 
 				entity base = file.base[ otherteam ]
 				array<vector> points = NavMesh_GetNeighborPositions( base.GetOrigin(), HULL_HUMAN, 5 )
+
 				if ( !points.len() )
 					points = NavMesh_RandomPositions( base.GetOrigin(), HULL_HUMAN, 5, 0, 200.0 )
 
 				BotSetTargetPos( bot, points.len() ? SortPositionsByClosestToPos( points, base.GetOrigin() )[0] : base.GetOrigin() )
-			}
-			else
-			{
-				print( "All entities invalid" )
 			}
 
 			WaitFrame()
@@ -607,10 +677,12 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 	{
 		array<vector> returnOrigins = []
 		int n = neighborPos.len()
+
 		if ( !n )
-			return returnOrigins
+			return [ pos ]
 
 		array<bool> used = []
+
 		for ( int i = 0; i < n; i++ )
 			used.append( false )
 
@@ -618,12 +690,14 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 		{
 			int bestIdx = -1
 			float bestDist = -1
+
 			for ( int i = 0; i < n; i++ )
 			{
 				if ( used[i] )
 					continue
 
 				float d = Distance( neighborPos[i], pos )
+
 				if ( d < bestDist || bestDist == -1 )
 				{
 					bestDist = d
@@ -635,6 +709,7 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 				break
 
 			used[ bestIdx ] = true
+
 			returnOrigins.append( neighborPos[ bestIdx ] )
 		}
 
@@ -658,6 +733,7 @@ void function OnslaughtGameMode_JuggernautThink( entity player )
 			return
 
 		WaitEndFrame()
+
 		bot.EndSignal( "OnDeath" )
 		bot.EndSignal( "RespawnMe" )
 
@@ -683,7 +759,8 @@ void function OnslaughtGameMode_SetTeamScore( int team, int amount = 1 )
 	}
 
 	int newScore = score + amount
-	if( newScore > scoreLimit && !GameScore_AllowPointsOverLimit() )
+
+	if ( newScore > scoreLimit && !GameScore_AllowPointsOverLimit() )
 		newScore = scoreLimit
 
 	GameRules_SetTeamScore( team, newScore )
@@ -700,6 +777,7 @@ void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason
 	
 	int announceRoundWinnerWinningSubstr
 	int announceRoundWinnerLosingSubstr
+
 	if ( winningReason == "" )
 		announceRoundWinnerWinningSubstr = 0
 	else
@@ -711,6 +789,7 @@ void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason
 		announceRoundWinnerLosingSubstr = GetStringID( losingReason )
 	
 	float endTime
+
 	if ( IsRoundBased() )
 		endTime = expect float( GetServerVar( "roundEndTime" ) )
 	else
@@ -720,10 +799,10 @@ void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason
 	{
 		int announcementSubstr = announceRoundWinnerLosingSubstr
 
-		if( team && player.GetTeam() == team )
+		if ( team && player.GetTeam() == team )
 			announcementSubstr = announceRoundWinnerWinningSubstr
 	
-		if( Flag( "AnnounceWinnerEnabled" ) )
+		if ( Flag( "AnnounceWinnerEnabled" ) )
 		{
 			if ( IsRoundBased() && !HasRoundScoreLimitBeenReached() )
 				Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceRoundWinner", 0, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME, GameRules_GetTeamScore2( TEAM_MILITIA ), GameRules_GetTeamScore2( TEAM_IMC ) )
@@ -731,7 +810,7 @@ void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason
 				Remote_CallFunction_NonReplay( player, "ServerCallback_AnnounceWinner", 0, announcementSubstr, ROUND_WINNING_KILL_REPLAY_SCREEN_FADE_TIME )
 		}
 
-		if( team && player.GetTeam() == team )
+		if ( team && player.GetTeam() == team )
 			UnlockAchievement( player, achievements.MP_WIN )
 	}
 
@@ -739,6 +818,7 @@ void function OnslaughtGameMode_SetWinner( int ornull team, string winningReason
 		SetServerVar( "winningTeam", GetWinningTeam() )
 	
 	SetGameState( eGameState.WinnerDetermined )
+
 	if ( IsRoundBased() && !HasRoundScoreLimitBeenReached() )
 	{
 		if ( team != null && team != TEAM_UNASSIGNED )
@@ -795,13 +875,17 @@ void function OnslaughtGameMode_NoIntro_SpawnPlayer( entity player )
 void function OnslaughtGameMode_NoIntro_PilotSpawnPlayer( entity player )
 {
 	player.EndSignal( "OnDestroy" )
-	if( PlayerCanSpawn( player ) )
+
+	if ( PlayerCanSpawn( player ) )
 		RespawnAsPilot( player )
 	
 	player.FreezeControlsOnServer()
+
 	HolsterAndDisableWeapons( player )
 	ResetPlayerCooldowns( player )
+
 	WaitFrame()
+
 	AddCinematicFlag( player, CE_FLAG_CLASSIC_MP_SPAWNING )
 	ScreenFadeFromBlack( player, 1, 1 )
 
@@ -815,10 +899,12 @@ void function OnslaughtGameMode_NoIntro_PilotSpawnPlayer( entity player )
 void function OnslaughtGameMode_NoIntro_TitanSpawnPlayer( entity player )
 {
 	player.EndSignal( "OnDestroy" )
+
 	WaitFrame()
+
 	ScreenFadeFromBlack( player, 1, 1 )
 
-	entity intermissionCam = GetEntArrayByClass_Expensive( "info_intermission" )[ 0 ]
+	entity intermissionCam = GetEntArrayByClass_Expensive( "info_intermission" )[0]
 	player.SetObserverModeStaticPosition( intermissionCam.GetOrigin() )
 	player.SetObserverModeStaticAngles( intermissionCam.GetAngles() )
 	player.StartObserverMode( OBS_MODE_STATIC_LOCKED )
@@ -826,7 +912,7 @@ void function OnslaughtGameMode_NoIntro_TitanSpawnPlayer( entity player )
 	while ( Time() < expect float( level.nv.gameStartTime ) )
 		WaitFrame()
 	
-	if( PlayerCanSpawn( player ) )
+	if ( PlayerCanSpawn( player ) )
 	{
 		player.StopObserverMode()
 		RespawnAsTitan( player )
@@ -863,6 +949,7 @@ void function OnslaughtGameMode_SetupJuggernautBases( string mapName )
 	entity base
 	int IMCTeam = file.SwitchedSides ? TEAM_MILITIA : TEAM_IMC
 	int MilitiaTeam = file.SwitchedSides ? TEAM_IMC : TEAM_MILITIA
+
 	#if BP_ORT
 		entity botspawnpoint
 	#endif
@@ -884,6 +971,7 @@ void function OnslaughtGameMode_SetupJuggernautBases( string mapName )
 		base.SetModel( $"models/dev/empty_model.mdl" )
 		base.EnableRenderAlways()
 		file.base[ IMCTeam ] <- base
+
 		#if BP_ORT
 			botspawnpoint = CreateEntity( "prop_script" )
 			botspawnpoint.SetOrigin( < -611.425, 1777.85, 878.241 > )
@@ -1070,7 +1158,7 @@ void function OnslaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 		DebugDrawLine( origin1, origin2, 0, 140, 255, true, 10000.0 )
 	#endif
 
-	const float PADDING = 64.0
+	float PADDING = 64.0
 
 	vector mins = < min( origin1.x, origin2.x ), min( origin1.y, origin2.y ), min( origin1.z, origin2.z ) >
 	vector maxs = < max( origin1.x, origin2.x ), max( origin1.y, origin2.y ), max( origin1.z, origin2.z ) >
@@ -1091,9 +1179,11 @@ void function OnslaughtGameMode_CreateBaseTrigger( vector origin1, vector origin
 
 			vector playerOrigin = player.GetOrigin()
 
-			if ( playerOrigin.x >= mins.x && playerOrigin.x <= maxs.x &&
-				 playerOrigin.y >= mins.y && playerOrigin.y <= maxs.y &&
-				 playerOrigin.z >= mins.z && playerOrigin.z <= maxs.z )
+			if (
+				playerOrigin.x >= mins.x && playerOrigin.x <= maxs.x &&
+				playerOrigin.y >= mins.y && playerOrigin.y <= maxs.y &&
+				playerOrigin.z >= mins.z && playerOrigin.z <= maxs.z
+			)
 			{
 				playersCurrentlyInTrigger.append( player )
 				if ( playersInTrigger.find( player ) == -1 )
