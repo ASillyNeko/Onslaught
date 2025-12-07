@@ -189,6 +189,8 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 		{
 			if ( IsValid( JuggernautCrate ) )
 			{
+				SetGlobalNetInt( "JuggernautCrateProgress", 0 )
+
 				if ( IsValid( player ) && file.Juggernaut == player )
 				{
 					JuggernautCrate.Destroy()
@@ -196,8 +198,6 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 				else
 				{
 					JuggernautCrate.SetUsable()
-
-					SetGlobalNetInt( "JuggernautCrateProgress", 0 )
 
 					SetTeam( JuggernautCrate, TEAM_UNASSIGNED )
 				}
