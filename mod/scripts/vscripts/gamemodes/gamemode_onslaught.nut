@@ -1,6 +1,6 @@
 global function OnslaughtGameMode_Init
 
-const int ONSLAUGHT_DEV = 1
+const int ONSLAUGHT_DEV = 0
 
 const int JUGGERNAUT_HEALTH = 1000
 
