@@ -190,9 +190,17 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 			if ( IsValid( JuggernautCrate ) )
 			{
 				if ( IsValid( player ) && file.Juggernaut == player )
+				{
 					JuggernautCrate.Destroy()
+				}
 				else
+				{
 					JuggernautCrate.SetUsable()
+
+					SetGlobalNetInt( "JuggernautCrateProgress", 0 )
+
+					SetTeam( JuggernautCrate, TEAM_UNASSIGNED )
+				}
 
 				file.JuggernautCrateUsable = true
 			}
@@ -223,10 +231,6 @@ void function OnslaughtGameMode_Juggernaut_EquipThink( entity player, entity Jug
 
 		WaitFrame()
 	}
-
-	SetGlobalNetInt( "JuggernautCrateProgress", 0 )
-
-	SetTeam( JuggernautCrate, TEAM_UNASSIGNED )
 
 	if ( !player.UseButtonPressed() && !isbot )
 		return
