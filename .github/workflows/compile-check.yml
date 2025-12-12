@@ -37,7 +37,9 @@ jobs:
           native-json: "${{ github.workspace }}/mods/.github/natives.json"
 
       - name: Remove Mods Folder
-        run: rd /s /q mods
+        shell: cmd
+        run: |
+          rd /s /q mods
 
       - name: Checkout Northstar Mods (Main)
         uses: actions/checkout@v4
