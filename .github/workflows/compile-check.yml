@@ -36,6 +36,9 @@ jobs:
           mods-directory: "${{ github.workspace }}/mods"
           native-json: "${{ github.workspace }}/mods/.github/natives.json"
 
+      - name: Remove Mods Folder
+        run: rd /s /q mods
+
       - name: Checkout Northstar Mods (Main)
         uses: actions/checkout@v4
         with:
@@ -47,6 +50,11 @@ jobs:
         shell: cmd
         run: |
           xcopy %NS_MOD_DIR% mods\%NS_MOD_DIR% /E /I /Y
+
+      - name: Copy Natives JSON
+        shell: cmd
+        run: |
+          xcopy %NS_MOD_DIR%\.github\natives.json mods\.github\natives.json /E /I /Y
 
       - name: Compile Scripts (Main)
         uses: ASpoonPlaysGames/squirrel-re-compiler@v3
