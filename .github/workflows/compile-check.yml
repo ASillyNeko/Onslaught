@@ -46,7 +46,7 @@ jobs:
         with:
           repository: R2Northstar/NorthstarMods
           ref: main
-          path: mods/NorthstarMods
+          path: mods/
 
       - name: Copy Northstar Mod Into Mods
         shell: cmd
