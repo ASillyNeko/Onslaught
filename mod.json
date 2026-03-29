@@ -7,7 +7,7 @@
 	"Scripts": [
 		{
 			"Path": "gamemodes/sh_gamemode_onslaught.nut",
-			"RunOn": "( ( CLIENT || SERVER ) && MP ) || UI",
+			"RunOn": "UI || MP",
 			"ServerCallback": {
 				"Before": "Sh_OnslaughtGameMode_Init"
 			},
